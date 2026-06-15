@@ -34,6 +34,10 @@ def prob_to_american(p: float) -> int:
 
 
 def american_to_decimal(odds: float) -> float:
+    # American odds are undefined in the open interval (-100, +100): there is no
+    # such price on a real book. Reject it rather than return a garbage multiple.
+    if -100 < odds < 100:
+        raise ValueError(f"American odds must satisfy |odds| >= 100, got {odds}")
     if odds >= 100:
         return 1.0 + odds / 100.0
     return 1.0 + 100.0 / (-odds)

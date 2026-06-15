@@ -43,6 +43,13 @@ def test_american_to_decimal():
     assert approx(american_to_decimal(-200), 1.5)
 
 
+def test_american_to_decimal_rejects_invalid_odds():
+    # |odds| < 100 is not a real price and must raise, not return garbage.
+    for bad in (50, -50, 0, 99, -99):
+        with pytest.raises(ValueError):
+            american_to_decimal(bad)
+
+
 def test_decimal_to_prob_roundtrip():
     p = 0.55
     dec = american_to_decimal(prob_to_american(p))

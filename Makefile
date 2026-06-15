@@ -7,7 +7,9 @@ help:
 	@echo "Targets:"
 	@echo "  make install      Install Python dependencies"
 	@echo "  make fetch        Cache player-game logs to data/*.parquet"
-	@echo "  make splits       Compute W/O splits → out/splits.parquet"
+	@echo "  make splits       Compute W/O splits (incl. true USG%) → out/splits.parquet"
+	@echo "  make usage        Show biggest USG% jumps when a teammate sits"
+	@echo "  make validate     Out-of-sample check on a held-out season"
 	@echo "  make edges        Run edge finder (default filters) → out/edges.csv"
 	@echo "  make clean-edges  Same, with --clean-only (no minutes confound)"
 	@echo "  make test         Run pytest suite"
@@ -26,6 +28,12 @@ fetch:
 
 splits:
 	$(PYTHON) -m src.splits
+
+usage:
+	$(PYTHON) -m src.edges --stat USG --min-z 2.5 --top 25
+
+validate:
+	$(PYTHON) -m src.validate
 
 edges:
 	$(PYTHON) -m src.edges --top 25

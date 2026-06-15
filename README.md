@@ -1,263 +1,160 @@
 # NBA Prop Edge Finder
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)](tests/)
 
-Mines NBA player-game logs for **with/without-teammate splits** across every major box-score
-stat and surfaces the cases where a player's production shifts meaningfully when a specific
-teammate is unavailable — the prop-betting setup where the sportsbook line is slow to
-reprice an injury-driven role change.
+A reproducible pipeline that measures how an NBA player's role and production change
+when a specific teammate is **on the floor vs. off it** — built to surface the cases
+where a sportsbook's player-prop line is slow to reprice an injury-driven role change.
 
-Built around the observation that the same pattern recurs at every position: when a star
-sits, a specific teammate absorbs a disproportionate share of the usage, minutes, or both,
-and the prop line lags the move for the first few hours after the news drops.
+The central metric is **true usage rate (USG%) with a teammate IN vs. OUT**, with the full
+box score (points, rebounds, assists, threes, and combos) measured the same way.
 
-## Headline result
+## The core idea, in one table
 
-Trained on 2023-24 + 2024-25, tested on the held-out 2025-26 season:
+When a high-usage star sits, his possessions don't vanish — a specific teammate absorbs
+them. Trained on real game logs (`nba_api`, free), here is that effect for three players
+in the seasons where it mattered:
 
-> **60.7% over-rate** (Wilson 95% CI [60.2%, 61.3%]) on 30,290 test-season games
-> across 1,300 candidate edges. Break-even at -110 is 52.4%.
+| Player | Teammate OUT | USG% in → out | Points in → out | What's happening |
+|---|---|---|---|---|
+| Damian Lillard | Giannis | 26.5% → **33.9%** (z=3.5) | 22.8 → **33.6** | Usage explosion → scoring |
+| De'Aaron Fox | Wembanyama | 23.0% → **29.3%** (z=4.4) | 16.2 → **24.3** | Usage explosion → scoring |
+| Jaylen Brown | Tatum | 28.5% → 30.2% (z=0.8, n.s.) | 21.9 → 24.5 | Usage flat — but **assists** +2.0 (z=3.1) |
 
-Edges are not pure multiple-testing artifacts. See `src.validate` to reproduce.
-*(60.7% is an upper bound — real sportsbook lines incorporate news partially, so live
-edge would be smaller. But the underlying signal is real.)*
+The Brown row is the point: raw usage barely moves, but his **role** shifts to playmaking.
+A model that only looked at points would miss it; one that reads usage *and* the full box
+score catches it. That nuance is the whole product.
+
+## Does the effect actually persist? (out-of-sample)
+
+Finding a big split in past data is easy and mostly noise — we scan ~140k
+(player, teammate, stat) combos. The honest test is whether edges found on two seasons
+still show up on a **third season the model never saw**.
+
+`src.validate` trains on 2023-24 + 2024-25 and tests on held-out 2025-26. It does **not**
+ask "how often did the player beat a line we drew" (you can clear any break-even just by
+drawing the line below the mean). It asks: *holding the line fixed, how much more often
+does the player exceed it when the teammate is OUT vs. IN?* — a gap that cancels line
+placement, because both rates use the same player, same line, same season.
+
+```
+Edges evaluated: 1,193
+
+1) Directional persistence
+   Still higher WITHOUT teammate: 871/1193 = 73.0%  (Wilson 95% CI [70.4%, 75.5%], chance = 50%)
+
+2) Over-rate gap at a common, training-derived line
+   WITHOUT-teammate over-rate:     0.622
+   WITH-teammate over-rate (ctrl): 0.520     <- the control; ~50% confirms the line is fair
+   GAP (line-placement-free):     +0.102  (+10.2 pts)
+
+3) Magnitude retention
+   Median train delta: +4.42  ->  median test delta: +1.11   (25% retained)
+```
+
+Read this honestly: the **direction** of the effect is robust (73% vs. 50% chance), and
+the line-controlled **gap is real** (+10.2 pts, with the control sitting at ~50% exactly as
+expected). But the **magnitude shrinks by ~75% out of sample** — the raw training splits are
+inflated by selection bias (winner's curse), so the live edge is a fraction of what the
+historical split suggests. The pipeline reports all three so the shrinkage is never hidden.
 
 ## Quickstart
 
 ```bash
-make install        # installs nba_api, pandas, pyarrow, pytest
-make fetch          # caches 3 seasons of player-game logs to data/
-make splits         # computes ~130k (player, teammate, stat) split rows
-make clean-edges    # surfaces top clean edges (no minutes confound)
-make test           # runs the test suite
+make install        # nba_api, pandas, pyarrow, pytest
+make fetch          # caches player + team game logs (3 seasons) to data/
+make splits         # computes ~140k (player, teammate, stat) split rows, incl. USG%
+make edges          # surfaces the largest, most significant splits
+make test           # 46 tests
 ```
 
-`make all` does the full pipeline end-to-end.
+`make all` runs the whole pipeline end-to-end.
 
-## What it does
+## Tools
 
-For every player on every team, compute their split:
+### `src.splits` — the engine
+Computes, for every `(player, teammate, team, season)`, the player's per-game average,
+per-36, and **true USG%** in games the teammate played vs. games the teammate missed,
+with a Welch z-score on the difference. Output: `out/splits.parquet`.
 
-- **with teammate K** = games where both player and teammate appeared for the same team
-- **without teammate K** = games where the player appeared but teammate K did not
-
-Then rank by effect size, statistical significance, and a **minutes-confound diagnostic**
-(per-36 stat lines, to separate "more minutes" from "more productive per minute").
-
-Stats covered: `PTS`, `REB`, `AST`, `FG3M`, `STL`, `BLK`, `TOV`, plus combos
-`PR`, `PA`, `RA`, `PRA`.
-
-## CLI tools
-
-### `src.edges` — batch edge surfacing
-
+### `src.edges` — ranking and filtering
 ```bash
-# Default: 4k–5k candidate edges
-python3 -m src.edges --top 25
+python3 -m src.edges --stat USG --min-z 2.5 --top 25     # biggest usage jumps
+python3 -m src.edges --player "Lillard" --teammate "Giannis"
+python3 -m src.edges --clean-only --markets-only --top 25 # liquid prop stats, no minutes confound
+python3 -m src.edges --direction down --top 20            # players who do LESS without a teammate
+```
+The `minutes_confound` / `same_sign_per36` columns separate "produced more because he
+played more minutes" from "produced more per minute" (a genuine role change). USG% is
+immune to the minutes confound by construction, which is why it's the cleanest signal.
 
-# Stricter: large effect, no minutes confound, both raw and per-36 same direction
-python3 -m src.edges --clean-only --min-z 2.5 --min-pct 0.15 --top 25
-
-# Filter to a player, teammate, team, or single stat
-python3 -m src.edges --player "Jaylen Brown" --teammate "Tatum"
-python3 -m src.edges --stat RA --min-z 2.0 --top 30
-python3 -m src.edges --team BOS
-
-# Negative edges (player produces less when teammate is out)
-python3 -m src.edges --direction down --top 20
-
-# Liquid markets only (drop STL, BLK, TOV — rarely posted as props)
-python3 -m src.edges --markets-only --clean-only --top 25
+### `src.validate` — out-of-sample check (above)
+```bash
+python3 -m src.validate
 ```
 
-### `src.validate` — out-of-sample validation (the credibility check)
-
-Trains splits on 2 seasons, scores edges against a held-out third season.
-Reports overall hit rate with a Wilson confidence interval.
-
+### `src.price` — price one line with proper odds math
 ```bash
-python3 -m src.validate --markets-only
-# > Overall hit rate: 0.607  (Wilson 95% CI: [0.602, 0.613])
-# > -110 break-even is 0.524. Observed: 0.607. Signal is present.
-```
-
-This is the honest answer to the multiple-testing problem (~130k pairs scanned →
-plenty of false positives at z>2 by chance). Out-of-sample hit rate proves the
-training edges aren't just noise.
-
-### `src.price` — price a specific line with proper odds math
-
-Given a sportsbook line + American prices, compute empirical P(over), Wilson 95% CI,
-no-vig market probability, edge in probability points, expected ROI, and capped Kelly stake.
-
-```bash
-python3 -m src.price \
-    --player "Jaylen Brown" --teammate "Tatum" --stat RA \
+python3 -m src.price --player "Jaylen Brown" --teammate "Tatum" --stat RA \
     --line 9.5 --over -110 --under -110
 ```
+Reports empirical P(over) with a Wilson 95% CI, the no-vig market probability, the
+probability edge, expected ROI, and a capped Kelly stake. The verdict is deliberately
+conservative: a wide Wilson interval on a small sample returns "too thin to commit."
 
-Example output:
-```
-Sample (without Tatum): n=16, over=10, push=0, under=6
-Empirical P(over):       0.625    (Wilson 95% CI: [0.386, 0.815])
-Market no-vig P(over):   0.500
-Probability edge:        +0.125
-Expected ROI per unit:   +19.32%   at -110 on the over
-Kelly stake (cap 25%):   21.25% of bankroll
-VERDICT: positive point estimate but Wilson lower bound suggests sample too thin to commit.
-```
-
-The Wilson lower bound is the honest read on small samples: a +12.5pt point estimate over
-just 16 games can easily evaporate. The verdict line is conservative on purpose.
-
-### `src.clv` — forward CLV logger
-
-SQLite-backed logger that tracks paper-trade or live entries against their eventual
-closing lines. CLV is measured in no-vig probability space (positive = beat the close).
-
-```bash
-# 1) When the news drops and the line is stale, log the entry
-python3 -m src.clv add \
-    --player "Jaylen Brown" --teammate "Tatum" --stat RA \
-    --side over --line 9.5 --price -110 --other-price -110 \
-    --book FanDuel --note "Tatum ruled OUT 30 min before tip"
-
-# 2) ~5 min before tip, log the closing line
-python3 -m src.clv close --id 1 --close-line 10.5 --close-price -125 --other-price 105
-
-# 3) After the game, log the actual stat
-python3 -m src.clv grade --id 1 --actual 12
-
-# View
-python3 -m src.clv report
-python3 -m src.clv summary
-```
-
-Tracks separately:
-- **Price CLV** (no-vig probability points beaten at the close)
-- **Line movement** (line points moved in the bet's favor)
-- **Realized P/L** (actual win/loss, P/L in units at 1u stakes)
+### `src.clv` — closing-line-value logger
+SQLite-backed log of entries vs. their closing lines. CLV is measured in no-vig
+probability space (positive = beat the close); line movement and realized P/L are tracked
+separately. `add` → `close` → `grade`, then `report` / `summary`.
 
 ## Methodology
 
-### With/without inference
+**With/without inference.** For each pair, restrict to the overlap of both players' tenure
+with the team (handles mid-season trades). The population is games the player actually
+took the court for (MIN > 0). "Teammate out" = the teammate was rostered in that window
+but didn't appear — this folds together injury, rest, and DNP, which is the right unit for
+"what happens when he's unavailable."
 
-For each `(player, teammate, team, season)`, restrict to games within the **overlap of
-both their tenures** with that team (handles mid-season trades). "Teammate is out" = the
-teammate had a roster spot for the team in that window but did not appear in the box score
-for that game. This conflates injury, rest, suspension, and DNP — fine for the betting
-question, which is "what happens when teammate K isn't available," not "what happens when
-K is specifically injured."
+**True USG%.** `100 * ((FGA + 0.44·FTA + TOV) · (TmMIN/5)) / (MIN · (TmFGA + 0.44·TmFTA + TmTOV))`,
+computed per game from joined team totals, and aggregated across a split by **summing
+components** (the Basketball-Reference season-total method), not by averaging per-game
+rates. Star usage lands in the expected 26–40% band (test-pinned).
 
-### Sample-size filters
+**Per-36.** `sum(stat)/sum(MIN)·36` (league standard), on the same MIN>0 games as the
+averages — never a mean of per-game ratios.
 
-- Player played ≥ 15 games for the team in that season
-- Teammate played ≥ 15 games for the team in that season
-- ≥ 5 games "without"
-- Player's average minutes ≥ 15.0 (filters end-of-bench garbage-time players)
+**Welch z.** `delta / sqrt(s²_with/n_with + s²_without/n_without)`. With ~140k combos the
+multiple-testing burden is severe, so z is a **ranking signal, not a p-value**. The
+out-of-sample check is what separates signal from noise.
 
-### Per-36 (league standard)
-
-```
-per_36 = (total stat in split) / (total minutes in split) * 36
-```
-
-This is the league-standard formula, **not** the mean of per-game per-36 rates (which is
-biased upward by short-minute games). Zero-minute games are dropped from the per-36 calc.
-
-### Welch z-score
-
-Standard error of the delta between two unequal-variance samples:
-
-```
-SE = sqrt(s_with² / n_with + s_without² / n_without)
-z  = (avg_without - avg_with) / SE
-```
-
-A z of ~2 corresponds to a roughly 5% two-tailed p-value, but **don't read the p-value
-literally** — we're scanning 100k+ pairs and the multiple-testing problem is severe.
-Treat z as a ranking signal, not a significance test.
-
-### Sportsbook odds math (`src.odds`)
-
-- `american_to_prob(odds)` — implied probability (including vig)
-- `no_vig_from_american(side, other)` — vig-free fair probability
-- `evaluate_line(values, line)` — empirical P(over) with Wilson CI; correctly excludes
-  pushes from the denominator on whole-number lines (the standard book grading rule)
-- `expected_roi`, `kelly_fraction` — bet sizing
-
-All pinned to known values in `tests/test_odds.py` (17 unit tests, including the canonical
--110 → 0.5238 implied, no-vig balancing, and Wilson CI exact values).
+**Odds math** (`src.odds`): American↔probability, no-vig, Wilson score interval, expected
+ROI, capped Kelly, and push-aware line grading (pushes excluded from the denominator on
+whole-number lines). All pinned to known values in `tests/test_odds.py`.
 
 ## Reproducibility
 
-- All raw data flows from `nba_api` (free, public stats.nba.com endpoints)
-- Caches are deterministic per season — re-running `src.fetch` is a no-op once cached
-- **36 pytest regression tests** covering:
-  - All 17 odds-math cases (`-110 → 0.5238`, no-vig, Wilson CI, Kelly, push-aware line eval)
-  - Known split cases (Jaylen Brown/Tatum AST, Damian Lillard/Giannis PRA)
-  - Per-36 formula matches `sum(stat)/sum(MIN)*36` byte-for-byte
-  - CLV logger lifecycle (add → close → grade → CLV sign convention → P/L)
-- Pipeline is deterministic given a fixed cache (no random sampling, no model state)
+- 100% of inputs come from `nba_api` (public stats.nba.com); caches are deterministic.
+- **46 tests**, including hand-computed USG% (single-game and component-sum aggregate),
+  the odds-math constants (-110 → 0.5238, etc.), with/without classification and tenure
+  windows, the validation controls, and regression pins on the Brown/Tatum and
+  Lillard/Giannis splits.
+- No randomness, no model state — same cache in, same numbers out.
 
-## Output columns reference
+## Limitations
 
-| Column | Meaning |
-|---|---|
-| `n_with`, `n_without` | Sample sizes |
-| `min_with`, `min_without`, `min_delta` | Minutes per game in each split |
-| `avg_with`, `avg_without`, `delta`, `pct_delta` | Per-game stat in each split |
-| `per36_with`, `per36_without`, `per36_delta` | Per-36-minute version |
-| `same_sign_per36` | True if per-36 moves the same direction as raw |
-| `z` | Welch-style z-score of `delta` over its standard error |
-| `minutes_confound` | True if `\|min_delta\|` ≥ 4.0 (effect partly explained by minutes) |
+- **Selection shrinkage.** Training splits are inflated by selection; the validated live
+  effect is ~25% of the raw delta. Always read the out-of-sample magnitude, not the split.
+- **No opponent / home-away / starter-vs-bench control.** "Without" games may cluster
+  against particular opponents; at small samples this is a real confound.
+- **Small samples.** Many pairs have 5–10 "without" games. `src.price` reports the Wilson
+  interval precisely so thin samples can't masquerade as strong edges.
+- **No live feeds.** Turning this into an automated workflow needs a live line feed
+  (e.g. PrizePicks/Underdog public endpoints) and an injury-news poller; those are out of
+  scope. The analysis and CLV-tracking layers are here; the data plumbing is not.
 
-## Limitations (read this before you bet)
+## Data note
 
-- **No opponent control.** "Without" games may cluster against weaker/stronger opponents.
-  At small n_without this is a real confound, not noise.
-- **No home/away split.**
-- **No starter vs. bench split.** A player whose role changes between starts and bench
-  shows up as one bucket.
-- **Multiple testing.** We scan ~130k (player, teammate, stat) tuples — a z of 2.0 by
-  pure chance occurs in 2.5% of tests, which is ~3,250 false signals at z≥2. Use
-  `--clean-only` and `--min-z 3.0+` to lean toward signal.
-- **Sample-size honesty.** A 6-game "without" sample with z=3 is much weaker evidence
-  than 25 games with z=3. Always read `n_without` alongside z. `src.price` reports the
-  Wilson 95% CI explicitly for this reason.
-- **No live odds.** This repo finds historical splits and prices a *single* candidate
-  line. To turn it into a betting workflow you need a live odds feed.
-
-## A note on Yahoo Fantasy API
-
-The Yahoo Fantasy API is **not useful for the historical model**. It exposes raw box
-stats and Yahoo's own fantasy projections, but no advanced metrics (true USG%, on/off
-splits, lineup data) — strictly a subset of what `nba_api` provides, in a less convenient
-format. The right separation is:
-
-- **`nba_api` (this repo)** → historical splits, real box scores, lineup data
-- **Yahoo Fantasy API** (not used here) → *tonight's* roster/injury status + Yahoo's
-  projections, useful as a forward-looking "who's out tonight" feed once you have a
-  live betting workflow
-
-Don't try to use Yahoo as a USG% source — it doesn't expose that.
-
-## What's not in this repo (yet)
-
-To turn this from a research tool into a fully automated betting workflow, two
-external feeds are needed:
-
-1. **Live sportsbook line feed.** Free-tier options: PrizePicks public JSON endpoints,
-   Underdog public endpoints. Paid: The Odds API props tier, OddsJam. Without this, the
-   CLV logger requires manual line entry.
-2. **Injury news poller.** ESPN injury endpoints (unofficial but stable), Rotowire RSS,
-   X/Twitter scraping. Triggers the "log entry NOW" event for `src.clv`.
-
-Future modeling improvements (deliberately deferred — current OOS hit rate is already
-well above break-even):
-
-- **Recency weighting** in splits (exponential decay by game date)
-- **Multi-teammate combos** (e.g. Brown w/o Tatum AND Holiday vs. either alone)
-- **Pace adjustment** (per-100-possessions instead of per-36, when possessions matter)
-- **Opponent DRtg control** in the without-sample to remove schedule confound
+`nba_api` is the right source: it provides true USG%, real box scores, and the per-game
+team totals needed to compute usage. (Yahoo's Fantasy API exposes only raw box stats and
+its own projections — a strict subset — so it isn't used here.)

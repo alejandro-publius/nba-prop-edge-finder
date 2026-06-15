@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .usage import add_usage, aggregate_usg
+
 # Base box-score stats and derived combo stats
 BASE_STATS = ["PTS", "REB", "AST", "FG3M", "STL", "BLK", "TOV"]
 COMBO_STATS = {
@@ -15,6 +17,11 @@ COMBO_STATS = {
     "PA": ["PTS", "AST"],
     "RA": ["REB", "AST"],
 }
+
+# USG% is a rate that is already minutes- and possession-aware, so it is handled
+# specially: no per-36 (it IS already normalized) and its multi-game average uses
+# the component-sum aggregate from src.usage rather than a mean of per-game rates.
+RATE_STATS = {"USG"}
 
 MIN_GAMES_PLAYER = 15        # player must have played this many games for the team
 MIN_GAMES_TEAMMATE = 15      # teammate must have played this many games for the team
@@ -100,6 +107,11 @@ def compute_pair_splits(
                 k_first, k_last = k_dates.min(), k_dates.max()
 
                 p_window = p_df[(p_df["GAME_DATE"] >= k_first) & (p_df["GAME_DATE"] <= k_last)]
+                # Population = games the player actually took the court for (MIN > 0).
+                # A logged 0-minute game is a DNP, not a production sample, and must be
+                # excluded from BOTH the per-game averages and the per-36 calc so every
+                # statistic below is computed on one consistent set of games.
+                p_window = p_window[p_window["MIN"] > 0]
                 if len(p_window) < min_games_player:
                     continue
 
@@ -114,26 +126,35 @@ def compute_pair_splits(
                 min_with = with_df["MIN"].mean()
                 min_without = without_df["MIN"].mean()
 
-                # Drop zero-minute games for per-36 calc (DNPs that sneak in as 0 MIN)
-                with_played = with_df[with_df["MIN"] > 0]
-                without_played = without_df[without_df["MIN"] > 0]
-
                 for stat in stats:
-                    avg_with = with_df[stat].mean()
-                    avg_without = without_df[stat].mean()
+                    # Welch z is always computed on the per-game values (for USG, the
+                    # per-game USG% column), so significance reflects game-to-game spread.
                     std_with = with_df[stat].std(ddof=1) if n_with > 1 else np.nan
                     std_without = without_df[stat].std(ddof=1) if n_without > 1 else np.nan
                     se = np.sqrt(
                         (std_with ** 2 / max(n_with, 1)) + (std_without ** 2 / max(n_without, 1))
                     )
+
+                    if stat in RATE_STATS:
+                        # USG%: average via correct component-sum aggregate, and per-36
+                        # is undefined (the rate is already minute/possession-normalized),
+                        # so we mirror the average into the per-36 columns.
+                        avg_with = aggregate_usg(with_df)
+                        avg_without = aggregate_usg(without_df)
+                        with_per36 = avg_with
+                        without_per36 = avg_without
+                    else:
+                        avg_with = with_df[stat].mean()
+                        avg_without = without_df[stat].mean()
+                        # Per-36 using league-standard total-stat / total-minutes * 36,
+                        # on the same MIN>0 population as the averages above.
+                        total_min_with = with_df["MIN"].sum()
+                        total_min_without = without_df["MIN"].sum()
+                        with_per36 = (with_df[stat].sum() / total_min_with * 36) if total_min_with > 0 else np.nan
+                        without_per36 = (without_df[stat].sum() / total_min_without * 36) if total_min_without > 0 else np.nan
+
                     delta = avg_without - avg_with
                     z = delta / se if se and se > 0 else np.nan
-
-                    # Per-36 using league-standard total-stat / total-minutes * 36
-                    total_min_with = with_played["MIN"].sum()
-                    total_min_without = without_played["MIN"].sum()
-                    with_per36 = (with_played[stat].sum() / total_min_with * 36) if total_min_with > 0 else np.nan
-                    without_per36 = (without_played[stat].sum() / total_min_without * 36) if total_min_without > 0 else np.nan
 
                     rows.append({
                         "season": season,
@@ -170,11 +191,22 @@ if __name__ == "__main__":
     files = sorted(cache_dir.glob("gamelog_*.parquet"))
     if not files:
         raise SystemExit(f"No parquet files in {cache_dir}/ — run src/fetch.py first")
-    print(f"Loading {len(files)} cached file(s)...")
+    print(f"Loading {len(files)} cached player file(s)...")
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
     print(f"  {len(df):,} player-game rows")
 
     stats = BASE_STATS + list(COMBO_STATS.keys())
+
+    # If team logs are cached, join them to compute true USG% (teammate in vs out).
+    team_files = sorted(cache_dir.glob("teamlog_*.parquet"))
+    if team_files:
+        teams = pd.concat([pd.read_parquet(f) for f in team_files], ignore_index=True)
+        df = add_usage(df, teams)
+        stats = stats + ["USG"]
+        print(f"  joined {len(team_files)} team file(s) → true USG% enabled")
+    else:
+        print("  (no teamlog_*.parquet found — skipping USG%; run src.fetch to enable)")
+
     print(f"Computing splits across {len(stats)} stats...")
     splits = compute_pair_splits(df, stats)
     print(f"  {len(splits):,} (player, teammate, stat) rows")
