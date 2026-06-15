@@ -13,6 +13,10 @@ DEFAULT_MIN_N_WITHOUT = 5
 DEFAULT_MIN_AVG_WITH = 1.0   # ignore tiny baselines (e.g. blocks at 0.2)
 MINUTES_CONFOUND_THRESHOLD = 4.0  # minutes diff that flags a role-change confound
 
+# Stats that sportsbooks actually post props for at most NBA games.
+# STL / BLK / TOV are rarely available and have thin liquidity when they exist.
+LIQUID_MARKETS = {"PTS", "REB", "AST", "FG3M", "PR", "PA", "RA", "PRA"}
+
 
 def annotate(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -35,10 +39,13 @@ def filter_edges(
     player: str | None = None,
     teammate: str | None = None,
     team: str | None = None,
+    markets_only: bool = False,
 ) -> pd.DataFrame:
     df = df.copy()
     df = df[df["n_without"] >= min_n_without]
     df = df[df["avg_with"] >= min_avg_with]
+    if markets_only:
+        df = df[df["stat"].isin(LIQUID_MARKETS)]
 
     if direction == "up":
         df = df[(df["z"] >= min_z) & (df["pct_delta"] >= min_pct)]
@@ -82,6 +89,8 @@ if __name__ == "__main__":
     p.add_argument("--teammate", help="Substring match on teammate name")
     p.add_argument("--team", help="Team abbreviation, e.g. BOS")
     p.add_argument("--clean-only", action="store_true", help="Only show edges with no minutes confound")
+    p.add_argument("--markets-only", action="store_true",
+                   help="Restrict to liquid prop markets (PTS, REB, AST, FG3M, PR, PA, RA, PRA)")
     p.add_argument("--top", type=int, default=50, help="Print top N to stdout")
     args = p.parse_args()
 
@@ -94,6 +103,7 @@ if __name__ == "__main__":
         min_pct=args.min_pct,
         min_n_without=args.min_n_without,
         direction=args.direction,
+        markets_only=args.markets_only,
         stat=args.stat,
         player=args.player,
         teammate=args.teammate,
