@@ -1,0 +1,31 @@
+season,team,player,teammate_out,stat,n_without,avg_with,avg_without,delta,shrink_k,shrunk_delta,shrunk_without,z
+2025-26,SAS,De'Aaron Fox,Victor Wembanyama,PRA,19,25.95,34.84,8.9,0.691,6.41,32.36,5.32
+2025-26,SAS,De'Aaron Fox,Victor Wembanyama,PR,19,19.84,28.63,8.79,0.638,5.88,25.72,5.51
+2024-25,CHI,Josh Giddey,Jalen Smith,PRA,15,27.25,39.47,12.21,0.432,5.75,33.0,4.25
+2025-26,BOS,Payton Pritchard,Jaylen Brown,PRA,10,24.46,37.0,12.54,0.419,5.74,30.2,4.26
+2023-24,ATL,Dejounte Murray,Trae Young,PRA,28,31.08,39.89,8.81,0.609,5.69,36.77,4.4
+2023-24,MIA,Jimmy Butler III,Cole Swider,PRA,49,24.78,32.27,7.49,0.73,5.69,30.47,4.92
+2024-25,CHI,Josh Giddey,Jalen Smith,PR,15,20.22,31.73,11.52,0.443,5.51,25.73,4.84
+2023-24,BKN,Mikal Bridges,Jalen Wilson,PRA,36,23.79,32.33,8.54,0.603,5.48,29.27,4.21
+2024-25,CHI,Zach LaVine,Ayo Dosunmu,PRA,10,30.72,41.5,10.78,0.461,5.42,36.14,3.98
+2025-26,SAS,De'Aaron Fox,Victor Wembanyama,PA,19,22.35,30.47,8.12,0.625,5.31,27.66,5.1
+2024-25,LAL,Austin Reaves,LeBron James,PRA,9,28.49,42.78,14.29,0.328,5.25,33.74,3.99
+2025-26,SAS,De'Aaron Fox,Stephon Castle,PRA,14,26.59,34.36,7.76,0.596,4.96,31.55,3.77
+2023-24,ATL,Dejounte Murray,Trae Young,PA,28,25.98,34.14,8.16,0.573,4.95,30.93,4.6
+2023-24,MIA,Jimmy Butler III,Cole Swider,PR,49,20.22,27.16,6.94,0.661,4.84,25.06,4.58
+2023-24,BKN,Mikal Bridges,Jalen Wilson,PR,36,20.28,28.53,8.25,0.54,4.79,25.07,4.22
+2025-26,SAS,De'Aaron Fox,Victor Wembanyama,PTS,19,16.24,24.26,8.02,0.566,4.78,21.02,5.52
+2025-26,WAS,Alex Sarr,Anthony Gill,PRA,21,22.7,31.19,8.49,0.515,4.77,27.47,3.49
+2025-26,SAS,Julian Champagnie,Devin Vassell,PRA,15,17.32,25.13,7.81,0.559,4.73,22.05,3.51
+2024-25,NYK,OG Anunoby,Jalen Brunson,PRA,16,23.17,30.88,7.7,0.566,4.72,27.89,3.51
+2025-26,SAS,De'Aaron Fox,Stephon Castle,PA,14,22.85,30.57,7.72,0.575,4.71,27.56,4.38
+2023-24,MIA,Bam Adebayo,Jimmy Butler III,PRA,21,31.6,38.19,6.59,0.673,4.7,36.3,3.77
+2023-24,CLE,Darius Garland,Caris LeVert,PRA,9,25.73,35.0,9.27,0.456,4.68,30.41,3.39
+2024-25,DEN,Russell Westbrook,Aaron Gordon,PRA,29,21.03,28.07,7.04,0.617,4.66,25.69,3.56
+2024-25,CHI,Josh Giddey,Jalen Smith,PA,15,19.91,28.67,8.76,0.494,4.65,24.56,4.21
+2024-25,PHI,Kelly Oubre Jr.,Joel Embiid,PRA,27,18.65,25.81,7.17,0.59,4.57,23.22,3.44
+2024-25,CHI,Zach LaVine,Ayo Dosunmu,PA,10,26.12,36.0,9.88,0.425,4.57,30.69,4.13
+2023-24,PHI,Tobias Harris,Nicolas Batum,PRA,17,23.98,31.94,7.96,0.525,4.57,28.55,3.34
+2025-26,DET,Jalen Duren,Cade Cunningham,PRA,13,28.94,36.69,7.75,0.531,4.51,33.45,3.3
+2024-25,CHI,Zach LaVine,Ayo Dosunmu,PR,10,26.31,36.7,10.39,0.391,4.51,30.82,3.93
+2023-24,SAS,Devin Vassell,Sandro Mamukelashvili,PRA,32,23.94,30.81,6.87,0.604,4.48,28.42,3.39

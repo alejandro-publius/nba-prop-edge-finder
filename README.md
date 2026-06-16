@@ -76,6 +76,15 @@ MAE vs held-out test delta:  raw 3.56  ->  shrunk 2.10   (41% lower error)
 This is the number you'd price off — the honest forward estimate, not the inflated history.
 `out/edges.csv` carries `shrink_k`, `shrunk_delta`, and `shrunk_without` on every row.
 
+## Sample output (committed, no run required)
+
+- [`examples/usage_jumps.csv`](examples/usage_jumps.csv) — biggest true-USG% jumps when a
+  teammate sits (e.g. Austin Reaves 25.1% → 34.2% without Luka; Jalen Suggs 24.7% → 34.8%
+  without Franz Wagner).
+- [`examples/top_clean_edges.csv`](examples/top_clean_edges.csv) — top prop-market edges
+  with the honest shrunk projection (e.g. De'Aaron Fox PRA without Wembanyama: raw +8.9 →
+  shrunk **+6.4**, no minutes confound). Regenerate with `python3 examples/generate.py`.
+
 ## Quickstart
 
 ```bash

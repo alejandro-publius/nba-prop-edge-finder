@@ -43,6 +43,9 @@ project:
 shrink:
 	$(PYTHON) -m src.shrink --top 20
 
+examples:
+	$(PYTHON) examples/generate.py
+
 edges:
 	$(PYTHON) -m src.edges --top 25
 
