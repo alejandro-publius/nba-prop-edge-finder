@@ -11,6 +11,7 @@ help:
 	@echo "  make usage        Show biggest USG% jumps when a teammate sits"
 	@echo "  make validate     Out-of-sample check on a held-out season"
 	@echo "  make project      Price a prop line from a projected distribution"
+	@echo "  make shrink       Empirical-Bayes corrected (honest) forward deltas"
 	@echo "  make edges        Run edge finder (default filters) → out/edges.csv"
 	@echo "  make clean-edges  Same, with --clean-only (no minutes confound)"
 	@echo "  make test         Run pytest suite"
@@ -38,6 +39,9 @@ validate:
 
 project:
 	$(PYTHON) -m src.project --player "Jaylen Brown" --teammate "Tatum" --stat RA --line 9.5 --over -110 --under -110
+
+shrink:
+	$(PYTHON) -m src.shrink --top 20
 
 edges:
 	$(PYTHON) -m src.edges --top 25

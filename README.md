@@ -1,7 +1,7 @@
 # NBA Prop Edge Finder
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-67%20passing-brightgreen)](tests/)
 
 A reproducible pipeline that measures how an NBA player's role and production change
 when a specific teammate is **on the floor vs. off it** — built to surface the cases
@@ -59,6 +59,23 @@ expected). But the **magnitude shrinks by ~75% out of sample** — the raw train
 inflated by selection bias (winner's curse), so the live edge is a fraction of what the
 historical split suggests. The pipeline reports all three so the shrinkage is never hidden.
 
+### Correcting the inflation — empirical-Bayes shrinkage
+
+Rather than just *report* the winner's curse, `src.shrink` *corrects* it. Each raw delta is
+shrunk toward the population prior by its reliability `k = τ² / (τ² + SE²)` — large-sample
+estimates keep most of their edge, small-sample flukes get pulled back. The prior variance
+τ² is estimated per stat by method of moments on the **full** population, before any edge
+selection. Validated on the held-out season, the shrunk projection predicts what actually
+happens **41% more accurately** than the raw split:
+
+```
+Median delta:   raw +4.42  ->  shrunk +2.46  ->  actual (test) +1.11
+MAE vs held-out test delta:  raw 3.56  ->  shrunk 2.10   (41% lower error)
+```
+
+This is the number you'd price off — the honest forward estimate, not the inflated history.
+`out/edges.csv` carries `shrink_k`, `shrunk_delta`, and `shrunk_without` on every row.
+
 ## Quickstart
 
 ```bash
@@ -66,7 +83,7 @@ make install        # nba_api, pandas, pyarrow, pytest
 make fetch          # caches player + team game logs (3 seasons) to data/
 make splits         # computes ~140k (player, teammate, stat) split rows, incl. USG%
 make edges          # surfaces the largest, most significant splits
-make test           # 60 tests
+make test           # 67 tests
 ```
 
 `make all` runs the whole pipeline end-to-end.
@@ -92,6 +109,11 @@ immune to the minutes confound by construction, which is why it's the cleanest s
 ### `src.validate` — out-of-sample check (above)
 ```bash
 python3 -m src.validate
+```
+
+### `src.shrink` — empirical-Bayes correction (above)
+```bash
+python3 -m src.shrink --stat PTS --top 20   # honest forward deltas + per-stat shrink factors
 ```
 
 ### `src.project` — price a line from a projected distribution
@@ -165,7 +187,7 @@ whole-number lines). All pinned to known values in `tests/test_odds.py`.
 ## Reproducibility
 
 - 100% of inputs come from `nba_api` (public stats.nba.com); caches are deterministic.
-- **60 tests**, including hand-computed USG% (single-game and component-sum aggregate),
+- **67 tests**, including hand-computed USG% (single-game and component-sum aggregate),
   the odds-math constants (-110 → 0.5238, etc.), the distribution pricer (Poisson
   `sf(0.5,1)=1−e⁻¹`, NB→Poisson fallback, fatter NB tail, Normal symmetry), with/without
   classification and tenure windows, the validation controls, and regression pins on the

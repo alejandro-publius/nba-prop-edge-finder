@@ -31,6 +31,7 @@ from pathlib import Path
 import pandas as pd
 
 from .odds import evaluate_line, wilson_interval
+from .shrink import add_shrinkage
 from .splits import COMBO_STATS, add_combo_stats, compute_pair_splits
 
 
@@ -100,6 +101,9 @@ def validate(
     print(f"Testing on {test_season} ({len(test_df):,} player-games)")
     print("Computing training splits...")
     train_splits = compute_pair_splits(train_df, stats)
+    # Empirical-Bayes shrink the deltas on the FULL training population (the prior
+    # is estimated before edge selection, so it isn't contaminated by the cherry-pick).
+    train_splits = add_shrinkage(train_splits)
 
     edges = train_splits[
         (train_splits["z"] >= train_min_z)
@@ -137,6 +141,7 @@ def validate(
             "train_avg_with": e["avg_with"],
             "train_avg_without": e["avg_without"],
             "train_delta": e["delta"],
+            "train_shrunk_delta": e["shrunk_delta"],
             "line": line,
             "test_n_with": r_with.n,
             "test_n_without": r_without.n,
@@ -195,6 +200,21 @@ def print_summary(results: pd.DataFrame) -> None:
     print(f"   Median train delta: {med_train:+.2f}")
     print(f"   Median test  delta: {med_test:+.2f}   "
           f"({med_test/med_train*100:.0f}% retained)" if med_train else "")
+    print()
+    print("4) Does empirical-Bayes shrinkage predict reality better than the raw split?")
+    have_shrunk = results["train_shrunk_delta"].notna()
+    rs = results[have_shrunk]
+    if len(rs):
+        mae_raw = float((rs["train_delta"] - rs["test_delta"]).abs().mean())
+        mae_shrunk = float((rs["train_shrunk_delta"] - rs["test_delta"]).abs().mean())
+        med_shrunk = float(rs["train_shrunk_delta"].median())
+        print(f"   Median shrunk delta: {med_shrunk:+.2f}   (raw {rs['train_delta'].median():+.2f} "
+              f"-> test {rs['test_delta'].median():+.2f})")
+        print(f"   MAE vs held-out test delta:  raw {mae_raw:.2f}  ->  shrunk {mae_shrunk:.2f}  "
+              f"({(1 - mae_shrunk/mae_raw)*100:.0f}% lower error)" if mae_raw else "")
+        better = mae_shrunk < mae_raw
+        print(f"   Shrinkage {'WINS' if better else 'does not help'}: the shrunk projection is "
+              f"{'closer to' if better else 'not closer to'} what actually happened.")
     print()
     if gap > 0.02 and persist / n > 0.5:
         print("VERDICT: effect persists out of sample — the gap is positive and the")

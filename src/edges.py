@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .shrink import add_shrinkage
+
 # Defaults tuned to surface the kind of edges shown in the Jaylen Brown / Tatum example
 DEFAULT_MIN_Z = 1.5
 DEFAULT_MIN_PCT = 0.10
@@ -71,6 +73,7 @@ DISPLAY_COLS = [
     "n_with", "n_without",
     "min_with", "min_without", "min_delta",
     "avg_with", "avg_without", "delta", "pct_delta",
+    "shrink_k", "shrunk_delta", "shrunk_without",
     "per36_with", "per36_without", "per36_delta", "same_sign_per36",
     "z", "minutes_confound",
 ]
@@ -95,6 +98,7 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     df = pd.read_parquet(args.splits)
+    df = add_shrinkage(df)
     df = annotate(df)
 
     edges = filter_edges(
