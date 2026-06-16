@@ -1,7 +1,7 @@
 # NBA Prop Edge Finder
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)](tests/)
 
 A reproducible pipeline that measures how an NBA player's role and production change
 when a specific teammate is **on the floor vs. off it** — built to surface the cases
@@ -66,7 +66,7 @@ make install        # nba_api, pandas, pyarrow, pytest
 make fetch          # caches player + team game logs (3 seasons) to data/
 make splits         # computes ~140k (player, teammate, stat) split rows, incl. USG%
 make edges          # surfaces the largest, most significant splits
-make test           # 46 tests
+make test           # 60 tests
 ```
 
 `make all` runs the whole pipeline end-to-end.
@@ -94,7 +94,32 @@ immune to the minutes confound by construction, which is why it's the cleanest s
 python3 -m src.validate
 ```
 
-### `src.price` — price one line with proper odds math
+### `src.project` — price a line from a projected distribution
+The trader's core task: turn a projection into P(over), fair odds, and a market.
+```bash
+python3 -m src.project --player "Jaylen Brown" --teammate "Tatum" --stat RA \
+    --line 9.5 --over -110 --under -110
+```
+```
+Sample without Tatum: n=17, mean=11.41, var=21.76, sd=4.66
+Dispersion (var/mean): 1.91  (over-dispersed → Poisson too tight, use NB)
+
+P(over 9.5) by model:    P(over)   fair over   fair under
+  poisson                  0.702        -236         +236
+  negbin                   0.628        -168         +168
+  normal                   0.659        -193         +193
+  empirical                0.647        -183         +183
+
+Model (negbin) would post (5% hold): over -193 / under +156
+edge vs posted -110: +0.128  (+12.8 pts),  ROI +19.8%,  lean OVER
+```
+The model choice matters. NBA box-score counts are **over-dispersed** (variance > mean),
+so a plain **Poisson under-states the tails and over-prices the over** (−236 here). The
+**Negative Binomial** fits the empirical mean *and* variance and lands next to the raw
+sample (−168 vs −183), which is why it's the default. This is the difference between
+pricing like a bettor and pricing like a book.
+
+### `src.price` — empirical line check with Wilson CI
 ```bash
 python3 -m src.price --player "Jaylen Brown" --teammate "Tatum" --stat RA \
     --line 9.5 --over -110 --under -110
@@ -128,6 +153,11 @@ averages — never a mean of per-game ratios.
 multiple-testing burden is severe, so z is a **ranking signal, not a p-value**. The
 out-of-sample check is what separates signal from noise.
 
+**Distributional pricing** (`src.pricer`): counting stats priced via Poisson (baseline),
+Negative Binomial (mean/variance fit, the right model for over-dispersed NBA counts), and
+Normal; combos and the empirical sample too. Fair odds and a two-sided market with a
+configurable hold. Pure-Python (`math.lgamma`/`math.erf`), no scipy.
+
 **Odds math** (`src.odds`): American↔probability, no-vig, Wilson score interval, expected
 ROI, capped Kelly, and push-aware line grading (pushes excluded from the denominator on
 whole-number lines). All pinned to known values in `tests/test_odds.py`.
@@ -135,10 +165,11 @@ whole-number lines). All pinned to known values in `tests/test_odds.py`.
 ## Reproducibility
 
 - 100% of inputs come from `nba_api` (public stats.nba.com); caches are deterministic.
-- **46 tests**, including hand-computed USG% (single-game and component-sum aggregate),
-  the odds-math constants (-110 → 0.5238, etc.), with/without classification and tenure
-  windows, the validation controls, and regression pins on the Brown/Tatum and
-  Lillard/Giannis splits.
+- **60 tests**, including hand-computed USG% (single-game and component-sum aggregate),
+  the odds-math constants (-110 → 0.5238, etc.), the distribution pricer (Poisson
+  `sf(0.5,1)=1−e⁻¹`, NB→Poisson fallback, fatter NB tail, Normal symmetry), with/without
+  classification and tenure windows, the validation controls, and regression pins on the
+  Brown/Tatum and Lillard/Giannis splits.
 - No randomness, no model state — same cache in, same numbers out.
 
 ## Limitations
